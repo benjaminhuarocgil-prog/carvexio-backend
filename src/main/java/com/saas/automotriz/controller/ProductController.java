@@ -180,6 +180,7 @@ public class ProductController {
         if (r.getBrand() != null) product.setBrand(r.getBrand());
         if (r.getSupplier() != null) product.setSupplier(r.getSupplier());
         if (r.getIgv() != null) product.setIgv(r.getIgv());
+        if (r.getDeliveryAvailable() != null) product.setDeliveryAvailable(r.getDeliveryAvailable());
     }
 
     private ProductDTO toDTO(Product p) {
@@ -194,6 +195,7 @@ public class ProductController {
         dto.setPhotoUrl(p.getPhotoUrl());
         dto.setBusinessName(p.getBusiness().getName());
         dto.setIgv(p.getIgv());
+        dto.setDeliveryAvailable(Boolean.TRUE.equals(p.getDeliveryAvailable()));
         if (p.getBranch() != null) dto.setLocalId(p.getBranch().getId());
         return dto;
     }

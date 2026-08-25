@@ -27,6 +27,7 @@ public class Product {
     private Boolean active = true; // soft delete
     private String supplier; // nombre del proveedor
     private Boolean igv = false;
+    private Boolean deliveryAvailable = false;
     @ManyToOne
     @JoinColumn(name = "business_id")
     private Business business;   // cambio: de Long a relación real

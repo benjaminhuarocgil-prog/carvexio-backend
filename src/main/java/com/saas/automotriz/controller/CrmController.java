@@ -153,6 +153,7 @@ public class CrmController {
             odto.setBusinessName(business.getName());
             odto.setTotalAmount(o.getTotalAmount());
             odto.setStatus(o.getStatus() != null ? o.getStatus().name() : "-");
+            odto.setDeliveryMethod(o.getDeliveryMethod() != null ? o.getDeliveryMethod().name() : "PICKUP");
             odto.setAddress(o.getAddress());
             odto.setPhone(o.getPhone());
             odto.setNotes(o.getNotes());

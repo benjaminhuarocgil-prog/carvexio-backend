@@ -12,5 +12,6 @@ public class ProductRequest {
     private String brand;
     private String supplier;
     private Boolean igv;
+    private Boolean deliveryAvailable;
     private Long localId;
 }

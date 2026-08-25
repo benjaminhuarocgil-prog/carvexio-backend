@@ -15,6 +15,7 @@ public class ProductDTO {
     private String businessName;
     private String supplier;
     private Boolean igv;
+    private Boolean deliveryAvailable;
     private Long localId;
 
 }

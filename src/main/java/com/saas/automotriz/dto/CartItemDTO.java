@@ -10,4 +10,6 @@ public class CartItemDTO {
     private Double price;
     private Integer quantity;
     private Double subtotal;
+    private Boolean deliveryAvailable;
+    private String businessName;
 }

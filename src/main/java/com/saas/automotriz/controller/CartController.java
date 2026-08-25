@@ -119,6 +119,8 @@ public class CartController {
             dto.setPrice(item.getProduct().getPrice());
             dto.setQuantity(item.getQuantity());
             dto.setSubtotal(item.getProduct().getPrice() * item.getQuantity());
+            dto.setDeliveryAvailable(Boolean.TRUE.equals(item.getProduct().getDeliveryAvailable()));
+            dto.setBusinessName(item.getProduct().getBusiness().getName());
             return dto;
         }).toList();
 

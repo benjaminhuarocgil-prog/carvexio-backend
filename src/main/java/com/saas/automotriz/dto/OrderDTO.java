@@ -13,6 +13,7 @@ public class OrderDTO {
     private String businessName;
     private Double totalAmount;
     private String status;
+    private String deliveryMethod;
     private String address;
     private String phone;
     private String notes;

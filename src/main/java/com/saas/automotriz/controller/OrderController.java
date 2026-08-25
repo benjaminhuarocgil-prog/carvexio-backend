@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -50,6 +52,21 @@ public class OrderController {
             return ResponseEntity.badRequest().body(Collections.emptyList());
         }
 
+        DeliveryMethod deliveryMethod = request.getDeliveryMethod() == null
+                ? DeliveryMethod.PICKUP
+                : request.getDeliveryMethod();
+        boolean deliveryAvailable = itemsToProcess.stream()
+                .allMatch(item -> Boolean.TRUE.equals(item.getProduct().getDeliveryAvailable()));
+        if (deliveryMethod == DeliveryMethod.DELIVERY && !deliveryAvailable) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El envío a domicilio no está disponible para todos los productos seleccionados.");
+        }
+        if (deliveryMethod == DeliveryMethod.DELIVERY
+                && (request.getAddress() == null || request.getAddress().isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Ingresa una dirección para el envío a domicilio.");
+        }
+
         // Agrupamos los items a procesar por el negocio que los vende
         Map<Business, List<CartItem>> itemsByBusiness = itemsToProcess.stream()
                 .collect(Collectors.groupingBy(item -> item.getProduct().getBusiness()));
@@ -64,6 +81,7 @@ public class OrderController {
             order.setClient(user);
             order.setBusiness(biz);
             order.setStatus(OrderStatus.PENDING);
+            order.setDeliveryMethod(deliveryMethod);
             order.setAddress(request.getAddress());
             order.setPhone(request.getPhone());
             order.setNotes(request.getNotes());
@@ -141,6 +159,16 @@ public class OrderController {
             return ResponseEntity.status(403).build();
         }
 
+        DeliveryMethod method = order.getDeliveryMethod() == null ? DeliveryMethod.PICKUP : order.getDeliveryMethod();
+        if (method == DeliveryMethod.PICKUP && status == OrderStatus.SHIPPED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Este pedido es para recojo en tienda y no puede marcarse como envío.");
+        }
+        if (method == DeliveryMethod.DELIVERY && status == OrderStatus.READY_FOR_PICKUP) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Este pedido es a domicilio y no puede marcarse como listo para recojo.");
+        }
+
         order.setStatus(status);
         return ResponseEntity.ok(toDTO(orderRepository.save(order)));
     }
@@ -167,6 +195,9 @@ public class OrderController {
         dto.setBusinessName(order.getBusiness().getName());
         dto.setTotalAmount(order.getTotalAmount());
         dto.setStatus(order.getStatus().name());
+        dto.setDeliveryMethod(order.getDeliveryMethod() == null
+                ? DeliveryMethod.PICKUP.name()
+                : order.getDeliveryMethod().name());
         dto.setAddress(order.getAddress());
         dto.setPhone(order.getPhone());
         dto.setNotes(order.getNotes());

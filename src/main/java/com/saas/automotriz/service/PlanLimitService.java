@@ -12,6 +12,11 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PlanLimitService {
 
+    private static final String FEATURE_UPGRADE_MESSAGE =
+            "Necesitas mejorar tu plan para adquirir esta funcionalidad.";
+    private static final String CAPACITY_UPGRADE_MESSAGE =
+            "Necesitas adquirir este plan para tener más alcance de esta funcionalidad.";
+
     public static final int FREE_MAX_BRANCHES = 1;
     public static final int FREE_MAX_PRODUCTS = 5;
     public static final int FREE_MAX_SERVICES = 5;
@@ -24,34 +29,31 @@ public class PlanLimitService {
 
     public void checkBranchLimit(Business business, long currentActiveCount) {
         if (isFreePlan(business) && currentActiveCount >= FREE_MAX_BRANCHES) {
-            throw limitReached("locales", FREE_MAX_BRANCHES);
+            throw limitReached();
         }
     }
 
     public void checkProductLimit(Business business, long currentActiveCount, int amountToAdd) {
         if (isFreePlan(business) && currentActiveCount + amountToAdd > FREE_MAX_PRODUCTS) {
-            throw limitReached("productos", FREE_MAX_PRODUCTS);
+            throw limitReached();
         }
     }
 
     public void checkServiceLimit(Business business, long currentActiveCount, int amountToAdd) {
         if (isFreePlan(business) && currentActiveCount + amountToAdd > FREE_MAX_SERVICES) {
-            throw limitReached("servicios", FREE_MAX_SERVICES);
+            throw limitReached();
         }
     }
 
     public void checkBookingDailyLimit(Business business, long currentCountForDay) {
         if (isFreePlan(business) && currentCountForDay >= FREE_MAX_BOOKINGS_PER_DAY) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "El plan gratuito permite hasta " + FREE_MAX_BOOKINGS_PER_DAY
-                            + " citas por día para este negocio. Vuelve a intentarlo otro día o pide al negocio mejorar su plan.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, CAPACITY_UPGRADE_MESSAGE);
         }
     }
 
     public void checkReportsAccess(Business business) {
         if (isFreePlan(business)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "El plan gratuito no incluye el módulo de Reportes. Mejora tu plan para desbloquearlo.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, FEATURE_UPGRADE_MESSAGE);
         }
     }
 
@@ -62,13 +64,11 @@ public class PlanLimitService {
 
     public void checkCrmDetailAccess(Business business) {
         if (!hasCrmAccess(business)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "El plan gratuito no incluye el historial detallado de clientes (CRM). Mejora tu plan para desbloquearlo.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, FEATURE_UPGRADE_MESSAGE);
         }
     }
 
-    private ResponseStatusException limitReached(String recurso, int max) {
-        return new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Alcanzaste el límite de " + max + " " + recurso + " de tu plan gratuito. Mejora tu plan para agregar más.");
+    private ResponseStatusException limitReached() {
+        return new ResponseStatusException(HttpStatus.FORBIDDEN, CAPACITY_UPGRADE_MESSAGE);
     }
 }
