@@ -1,0 +1,188 @@
+package com.saas.automotriz.controller;
+
+import com.saas.automotriz.dto.OrderDTO;
+import com.saas.automotriz.dto.OrderItemDTO;
+import com.saas.automotriz.model.*;
+import com.saas.automotriz.repository.*;
+import com.saas.automotriz.request.CheckoutRequest;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping("/api/orders")
+@RequiredArgsConstructor
+public class OrderController {
+
+    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final CartRepository cartRepository;
+    private final CartItemRepository cartItemRepository;
+    private final BusinessRepository businessRepository;
+    private final ProductRepository productRepository;
+
+    // 1. Checkout: Convertir el carrito actual en uno o varios pedidos (agrupados por negocio)
+    @PostMapping("/checkout")
+    public ResponseEntity<List<OrderDTO>> checkout(@AuthenticationPrincipal User user,
+                                                  @RequestBody CheckoutRequest request) {
+        Cart cart = cartRepository.findByClient(user)
+                .orElseThrow(() -> new RuntimeException("No tienes un carrito activo"));
+
+        if (cart.getItems().isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        // Filtramos items del carrito si se especificaron IDs (Compra seleccionada)
+        List<CartItem> itemsToProcess;
+        if (request.getItemIds() != null && !request.getItemIds().isEmpty()) {
+            itemsToProcess = cart.getItems().stream()
+                    .filter(item -> request.getItemIds().contains(item.getId()))
+                    .toList();
+        } else {
+            itemsToProcess = cart.getItems();
+        }
+
+        if (itemsToProcess.isEmpty()) {
+            return ResponseEntity.badRequest().body(Collections.emptyList());
+        }
+
+        // Agrupamos los items a procesar por el negocio que los vende
+        Map<Business, List<CartItem>> itemsByBusiness = itemsToProcess.stream()
+                .collect(Collectors.groupingBy(item -> item.getProduct().getBusiness()));
+
+        List<Order> savedOrders = new ArrayList<>();
+
+        for (Map.Entry<Business, List<CartItem>> entry : itemsByBusiness.entrySet()) {
+            Business biz = entry.getKey();
+            List<CartItem> cartItemsForThisOrder = entry.getValue();
+
+            Order order = new Order();
+            order.setClient(user);
+            order.setBusiness(biz);
+            order.setStatus(OrderStatus.PENDING);
+            order.setAddress(request.getAddress());
+            order.setPhone(request.getPhone());
+            order.setNotes(request.getNotes());
+
+            double total = 0;
+            List<OrderItem> orderItems = new ArrayList<>();
+
+            for (CartItem ci : cartItemsForThisOrder) {
+                OrderItem oi = new OrderItem();
+                oi.setOrder(order);
+                oi.setProduct(ci.getProduct());
+                oi.setQuantity(ci.getQuantity());
+                oi.setPriceAtPurchase(ci.getProduct().getPrice());
+                oi.setSubtotal(ci.getProduct().getPrice() * ci.getQuantity());
+                total += oi.getSubtotal();
+                orderItems.add(oi);
+                
+                // Actualizamos stock del producto
+                Product p = ci.getProduct();
+                if (p.getStock() < ci.getQuantity()) {
+                    throw new RuntimeException("Stock insuficiente para: " + p.getName());
+                }
+                p.setStock(p.getStock() - ci.getQuantity());
+                productRepository.save(p);
+            }
+
+            order.setTotalAmount(total);
+            order.setItems(orderItems);
+            savedOrders.add(orderRepository.save(order));
+        }
+
+        // Vaciamos solo los items procesados del carrito
+        cartItemRepository.deleteAll(itemsToProcess);
+
+        // Si el carrito queda vacío, reseteamos el descuento
+        if (cart.getItems().size() <= itemsToProcess.size()) {
+            cart.setDiscount(0.0);
+        }
+        cartRepository.save(cart);
+
+        return ResponseEntity.ok(savedOrders.stream().map(this::toDTO).toList());
+    }
+
+    // 2. Cliente ve su historial de compras
+    @GetMapping("/my")
+    public ResponseEntity<List<OrderDTO>> getMyOrders(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(orderRepository.findByClientOrderByCreatedAtDesc(user)
+                .stream().map(this::toDTO).toList());
+    }
+
+    // 3. Negocio ve los pedidos que le han hecho
+    @GetMapping("/business")
+    public ResponseEntity<List<OrderDTO>> getBusinessOrders(@AuthenticationPrincipal User user,
+                                                             @RequestParam(required = false) Long localId) {
+        Business business = businessRepository.findByOwnerId(user.getId())
+                .orElseThrow(() -> new RuntimeException("No eres dueño de un negocio registrado"));
+        
+        List<Order> orders = localId != null
+                ? orderRepository.findByBusinessAndBranchIdOrderByCreatedAtDesc(business, localId)
+                : orderRepository.findByBusinessOrderByCreatedAtDesc(business);
+
+        return ResponseEntity.ok(orders.stream().map(this::toDTO).toList());
+    }
+
+    // 4. Negocio actualiza el estado del pedido
+    @PutMapping("/{id}/status")
+    public ResponseEntity<OrderDTO> updateStatus(@AuthenticationPrincipal User user,
+                                                @PathVariable Long id,
+                                                @RequestParam OrderStatus status) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Pedido no encontrado"));
+
+        // Validar que el usuario sea el dueño del negocio que recibió el pedido
+        if (!order.getBusiness().getOwner().getId().equals(user.getId())) {
+            return ResponseEntity.status(403).build();
+        }
+
+        order.setStatus(status);
+        return ResponseEntity.ok(toDTO(orderRepository.save(order)));
+    }
+
+    // 5. Simular pago de prueba (Modo Testing)
+    @PostMapping("/{id}/mock-pay")
+    public ResponseEntity<OrderDTO> mockPay(@AuthenticationPrincipal User user,
+                                            @PathVariable Long id) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Pedido no encontrado"));
+        if (!order.getClient().getId().equals(user.getId())) {
+            return ResponseEntity.status(403).build();
+        }
+        order.setStatus(OrderStatus.PAID);
+        return ResponseEntity.ok(toDTO(orderRepository.save(order)));
+    }
+
+    private OrderDTO toDTO(Order order) {
+        OrderDTO dto = new OrderDTO();
+        dto.setId(order.getId());
+        dto.setClientId(order.getClient().getId());
+        dto.setClientName(order.getClient().getName());
+        dto.setBusinessId(order.getBusiness().getId());
+        dto.setBusinessName(order.getBusiness().getName());
+        dto.setTotalAmount(order.getTotalAmount());
+        dto.setStatus(order.getStatus().name());
+        dto.setAddress(order.getAddress());
+        dto.setPhone(order.getPhone());
+        dto.setNotes(order.getNotes());
+        dto.setCreatedAt(order.getCreatedAt());
+        
+        dto.setItems(order.getItems().stream().map(item -> {
+            OrderItemDTO itemDTO = new OrderItemDTO();
+            itemDTO.setId(item.getId());
+            itemDTO.setProductId(item.getProduct().getId());
+            itemDTO.setProductName(item.getProduct().getName());
+            itemDTO.setQuantity(item.getQuantity());
+            itemDTO.setPriceAtPurchase(item.getPriceAtPurchase());
+            itemDTO.setSubtotal(item.getSubtotal());
+            return itemDTO;
+        }).toList());
+        
+        return dto;
+    }
+}
