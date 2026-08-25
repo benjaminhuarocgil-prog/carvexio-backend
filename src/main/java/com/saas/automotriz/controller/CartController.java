@@ -112,15 +112,16 @@ public class CartController {
 
     private CartDTO toDTO(Cart cart) {
         List<CartItemDTO> itemDTOs = cart.getItems().stream().map(item -> {
+            Product product = item.getProduct();
             CartItemDTO dto = new CartItemDTO();
             dto.setId(item.getId());
-            dto.setProductId(item.getProduct().getId());
-            dto.setProductName(item.getProduct().getName());
-            dto.setPrice(item.getProduct().getPrice());
+            dto.setProductId(product.getId());
+            dto.setProductName(product.getName());
+            dto.setPrice(product.getPrice());
             dto.setQuantity(item.getQuantity());
-            dto.setSubtotal(item.getProduct().getPrice() * item.getQuantity());
-            dto.setDeliveryAvailable(Boolean.TRUE.equals(item.getProduct().getDeliveryAvailable()));
-            dto.setBusinessName(item.getProduct().getBusiness().getName());
+            dto.setSubtotal(product.getPrice() * item.getQuantity());
+            dto.setDeliveryAvailable(Boolean.TRUE.equals(product.getDeliveryAvailable()));
+            dto.setBusinessName(product.getBusiness() != null ? product.getBusiness().getName() : "Tienda automotriz");
             return dto;
         }).toList();
 
