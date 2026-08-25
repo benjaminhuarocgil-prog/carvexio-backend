@@ -32,6 +32,9 @@ public class Order {
     private DeliveryMethod deliveryMethod = DeliveryMethod.PICKUP;
 
     private Double totalAmount;
+    private Double discountAmount = 0.0;
+    private Double paidAmount;
+    private Boolean rewardPointsGranted = false;
     private String address;     // Dirección de envío o recojo
     private String phone;       // Teléfono de contacto para el pedido
     private String notes;       // Notas extra del cliente

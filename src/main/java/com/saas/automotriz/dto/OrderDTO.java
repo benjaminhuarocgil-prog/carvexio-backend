@@ -12,6 +12,8 @@ public class OrderDTO {
     private Long businessId;
     private String businessName;
     private Double totalAmount;
+    private Double discountAmount;
+    private Double paidAmount;
     private String status;
     private String deliveryMethod;
     private String address;

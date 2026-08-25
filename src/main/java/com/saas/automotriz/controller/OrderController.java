@@ -26,6 +26,7 @@ public class OrderController {
     private final CartItemRepository cartItemRepository;
     private final BusinessRepository businessRepository;
     private final ProductRepository productRepository;
+    private final UserRepository userRepository;
 
     // 1. Checkout: Convertir el carrito actual en uno o varios pedidos (agrupados por negocio)
     @PostMapping("/checkout")
@@ -72,6 +73,12 @@ public class OrderController {
                 .collect(Collectors.groupingBy(item -> item.getProduct().getBusiness()));
 
         List<Order> savedOrders = new ArrayList<>();
+        int rewardDiscount = user.getActiveRewardDiscount() == null ? 0 : user.getActiveRewardDiscount();
+        double cartDiscount = cart.getDiscount() == null ? 0.0 : cart.getDiscount();
+        double selectedSubtotal = itemsToProcess.stream()
+                .mapToDouble(item -> item.getProduct().getPrice() * item.getQuantity()).sum();
+        boolean rewardCanApply = (rewardDiscount == 5 && selectedSubtotal >= 200)
+                || (rewardDiscount == 10 && selectedSubtotal >= 500);
 
         for (Map.Entry<Business, List<CartItem>> entry : itemsByBusiness.entrySet()) {
             Business biz = entry.getKey();
@@ -109,6 +116,13 @@ public class OrderController {
             }
 
             order.setTotalAmount(total);
+            double cartDiscountAmount = Math.round(total * cartDiscount) / 100.0;
+            double rewardDiscountAmount = rewardCanApply
+                    ? Math.min(Math.round((total - cartDiscountAmount) * rewardDiscount) / 100.0, rewardDiscount == 5 ? 20.0 : 50.0)
+                    : 0.0;
+            double discountAmount = cartDiscountAmount + rewardDiscountAmount;
+            order.setDiscountAmount(discountAmount);
+            order.setPaidAmount(total - discountAmount);
             order.setItems(orderItems);
             savedOrders.add(orderRepository.save(order));
         }
@@ -121,6 +135,11 @@ public class OrderController {
             cart.setDiscount(0.0);
         }
         cartRepository.save(cart);
+
+        if (rewardDiscount > 0 && rewardCanApply) {
+            user.setActiveRewardDiscount(0);
+            userRepository.save(user);
+        }
 
         return ResponseEntity.ok(savedOrders.stream().map(this::toDTO).toList());
     }
@@ -183,6 +202,7 @@ public class OrderController {
             return ResponseEntity.status(403).build();
         }
         order.setStatus(OrderStatus.PAID);
+        grantRewardPoints(order);
         return ResponseEntity.ok(toDTO(orderRepository.save(order)));
     }
 
@@ -194,6 +214,8 @@ public class OrderController {
         dto.setBusinessId(order.getBusiness().getId());
         dto.setBusinessName(order.getBusiness().getName());
         dto.setTotalAmount(order.getTotalAmount());
+        dto.setDiscountAmount(order.getDiscountAmount() == null ? 0.0 : order.getDiscountAmount());
+        dto.setPaidAmount(order.getPaidAmount() == null ? order.getTotalAmount() : order.getPaidAmount());
         dto.setStatus(order.getStatus().name());
         dto.setDeliveryMethod(order.getDeliveryMethod() == null
                 ? DeliveryMethod.PICKUP.name()
@@ -215,5 +237,23 @@ public class OrderController {
         }).toList());
         
         return dto;
+    }
+
+    private void grantRewardPoints(Order order) {
+        if (Boolean.TRUE.equals(order.getRewardPointsGranted())) return;
+        int points = order.getItems().stream()
+                .mapToInt(item -> pointsForProduct(item.getPriceAtPurchase()) * item.getQuantity()).sum();
+        User client = order.getClient();
+        client.setRewardPoints((client.getRewardPoints() == null ? 0 : client.getRewardPoints()) + points);
+        order.setRewardPointsGranted(true);
+        userRepository.save(client);
+    }
+
+    private int pointsForProduct(double price) {
+        if (price < 50) return 5;
+        if (price < 100) return 10;
+        if (price < 500) return 25;
+        if (price < 1000) return 60;
+        return 120;
     }
 }

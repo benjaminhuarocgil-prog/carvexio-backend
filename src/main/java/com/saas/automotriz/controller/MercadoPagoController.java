@@ -10,11 +10,14 @@ import com.mercadopago.resources.payment.Payment;
 import com.mercadopago.resources.preference.Preference;
 import com.saas.automotriz.model.Business;
 import com.saas.automotriz.model.OrderStatus;
+import com.saas.automotriz.model.Order;
+import com.saas.automotriz.model.OrderItem;
 import com.saas.automotriz.model.Plan;
 import com.saas.automotriz.model.User;
 import com.saas.automotriz.repository.BusinessRepository;
 import com.saas.automotriz.repository.OrderRepository;
 import com.saas.automotriz.repository.PlanRepository;
+import com.saas.automotriz.repository.UserRepository;
 import com.saas.automotriz.request.OrderRequest;
 import com.saas.automotriz.request.PlanPaymentRequest;
 import jakarta.annotation.PostConstruct;
@@ -37,12 +40,14 @@ public class MercadoPagoController {
     private final OrderRepository orderRepository;
     private final PlanRepository planRepository;
     private final BusinessRepository businessRepository;
+    private final UserRepository userRepository;
 
     public MercadoPagoController(OrderRepository orderRepository, PlanRepository planRepository,
-                                  BusinessRepository businessRepository) {
+                                  BusinessRepository businessRepository, UserRepository userRepository) {
         this.orderRepository = orderRepository;
         this.planRepository = planRepository;
         this.businessRepository = businessRepository;
+        this.userRepository = userRepository;
     }
 
     @Value("${mercadopago.access.token}")
@@ -63,6 +68,8 @@ public class MercadoPagoController {
     @PostMapping("/create-preference")
     public String createPreference(@RequestBody OrderRequest order) {
         try {
+            Order persistedOrder = order.getOrderId() == null ? null : orderRepository.findById(order.getOrderId()).orElse(null);
+            if (persistedOrder == null) return "Error: pedido no encontrado";
             // 1. Forzamos el uso del token directamente en la petición (más seguro)
             com.mercadopago.core.MPRequestOptions options = com.mercadopago.core.MPRequestOptions.builder()
                     .accessToken(accessToken)
@@ -73,9 +80,9 @@ public class MercadoPagoController {
             // 2. Agregamos el item con la moneda explícita (PEN para Soles)
             List<PreferenceItemRequest> items = new ArrayList<>();
             PreferenceItemRequest item = PreferenceItemRequest.builder()
-                    .title(order.getTitle())
-                    .quantity(order.getQuantity())
-                    .unitPrice(BigDecimal.valueOf(order.getPrice()))
+                    .title("Pedido #" + persistedOrder.getId() + " - " + persistedOrder.getBusiness().getName())
+                    .quantity(1)
+                    .unitPrice(BigDecimal.valueOf(persistedOrder.getPaidAmount() == null ? persistedOrder.getTotalAmount() : persistedOrder.getPaidAmount()))
                     .currencyId("PEN") // <-- IMPORTANTE: Cambia a "ARS", "MXN", etc. según tu país
                     .build();
             items.add(item);
@@ -217,6 +224,7 @@ public class MercadoPagoController {
                     orderRepository.findById(orderId).ifPresent(o -> {
                         if (o.getStatus() == OrderStatus.PENDING) {
                             o.setStatus(OrderStatus.PAID);
+                            grantRewardPoints(o);
                             orderRepository.save(o);
                         }
                     });
@@ -227,6 +235,24 @@ public class MercadoPagoController {
         }
 
         return ResponseEntity.ok().build();
+    }
+
+    private void grantRewardPoints(Order order) {
+        if (Boolean.TRUE.equals(order.getRewardPointsGranted())) return;
+        int points = order.getItems().stream()
+                .mapToInt(item -> pointsForProduct(item.getPriceAtPurchase()) * item.getQuantity()).sum();
+        User client = order.getClient();
+        client.setRewardPoints((client.getRewardPoints() == null ? 0 : client.getRewardPoints()) + points);
+        order.setRewardPointsGranted(true);
+        userRepository.save(client);
+    }
+
+    private int pointsForProduct(double price) {
+        if (price < 50) return 5;
+        if (price < 100) return 10;
+        if (price < 500) return 25;
+        if (price < 1000) return 60;
+        return 120;
     }
 }
 

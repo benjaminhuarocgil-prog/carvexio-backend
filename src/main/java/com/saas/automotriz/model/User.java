@@ -23,6 +23,8 @@ public class User implements UserDetails {
     private String email;
     private String password;
     private String phone;
+    private Integer rewardPoints = 0;
+    private Integer activeRewardDiscount = 0;
 
     @Enumerated(EnumType.STRING)
     private Role role;
