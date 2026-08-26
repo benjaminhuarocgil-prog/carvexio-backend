@@ -127,7 +127,7 @@ public class MercadoPagoController {
 
     // Crea la preferencia de pago para que un negocio se suscriba a un Plan
     @PostMapping("/create-plan-preference")
-    public String createPlanPreference(@AuthenticationPrincipal User user, @RequestBody PlanPaymentRequest request) {
+    public java.util.Map<String, String> createPlanPreference(@AuthenticationPrincipal User user, @RequestBody PlanPaymentRequest request) {
         try {
             Business business = businessRepository.findByOwnerId(user.getId())
                     .orElseThrow(() -> new RuntimeException("No tienes un negocio registrado"));
@@ -166,15 +166,20 @@ public class MercadoPagoController {
             }
 
             Preference preference = client.create(requestBuilder.build(), options);
-            return preference.getId();
+            return java.util.Map.of(
+                    "preferenceId", preference.getId(),
+                    "initPoint", preference.getInitPoint()
+            );
 
         } catch (MPApiException e) {
             System.err.println("Código de error MP: " + e.getApiResponse().getStatusCode());
             System.err.println("Respuesta de MP: " + e.getApiResponse().getContent());
-            return "Error de Mercado Pago: " + e.getApiResponse().getContent();
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "No se pudo iniciar Mercado Pago.");
         } catch (Exception e) {
             e.printStackTrace();
-            return "Error genérico: " + e.getMessage();
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo iniciar el pago del plan.");
         }
     }
 
