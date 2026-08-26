@@ -24,7 +24,6 @@ public class OrderController {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final CartRepository cartRepository;
-    private final CartItemRepository cartItemRepository;
     private final BusinessRepository businessRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
@@ -53,6 +52,12 @@ public class OrderController {
 
         if (itemsToProcess.isEmpty()) {
             return ResponseEntity.badRequest().body(Collections.emptyList());
+        }
+
+        // Validamos todos los productos antes de modificar stock o crear pedidos.
+        // Así, datos antiguos o productos incompletos no terminan en un error 500.
+        for (CartItem cartItem : itemsToProcess) {
+            validateCheckoutItem(cartItem);
         }
 
         DeliveryMethod deliveryMethod = request.getDeliveryMethod() == null
@@ -132,11 +137,16 @@ public class OrderController {
             savedOrders.add(orderRepository.save(order));
         }
 
-        // Vaciamos solo los items procesados del carrito
-        cartItemRepository.deleteAll(itemsToProcess);
+        // Quitamos los ítems desde la colección administrada por JPA. Con orphanRemoval,
+        // Hibernate elimina los registros al confirmar la transacción sin intentar guardar
+        // nuevamente entidades que ya fueron borradas.
+        Set<Long> processedItemIds = itemsToProcess.stream()
+                .map(CartItem::getId)
+                .collect(Collectors.toSet());
+        cart.getItems().removeIf(item -> processedItemIds.contains(item.getId()));
 
         // Si el carrito queda vacío, reseteamos el descuento
-        if (cart.getItems().size() <= itemsToProcess.size()) {
+        if (cart.getItems().isEmpty()) {
             cart.setDiscount(0.0);
         }
         cartRepository.save(cart);
@@ -260,5 +270,30 @@ public class OrderController {
         if (price < 500) return 25;
         if (price < 1000) return 60;
         return 120;
+    }
+
+    private void validateCheckoutItem(CartItem cartItem) {
+        Product product = cartItem.getProduct();
+        String productName = product == null || product.getName() == null ? "este producto" : product.getName();
+
+        if (product == null || product.getBusiness() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El producto " + productName + " ya no está disponible. Retíralo del carrito y agrégalo nuevamente.");
+        }
+        if (product.getPrice() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El producto " + productName + " no tiene un precio válido.");
+        }
+        if (cartItem.getQuantity() == null || cartItem.getQuantity() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "La cantidad elegida para " + productName + " no es válida.");
+        }
+
+        int stockAvailable = product.getStock() == null ? 0 : product.getStock();
+        if (stockAvailable < cartItem.getQuantity()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No hay suficiente stock de " + productName + ". Disponible: " + stockAvailable
+                            + ", solicitado: " + cartItem.getQuantity() + ".");
+        }
     }
 }
