@@ -14,6 +14,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -30,6 +31,7 @@ public class OrderController {
 
     // 1. Checkout: Convertir el carrito actual en uno o varios pedidos (agrupados por negocio)
     @PostMapping("/checkout")
+    @Transactional
     public ResponseEntity<List<OrderDTO>> checkout(@AuthenticationPrincipal User user,
                                                   @RequestBody CheckoutRequest request) {
         Cart cart = cartRepository.findByClient(user)
@@ -109,7 +111,10 @@ public class OrderController {
                 // Actualizamos stock del producto
                 Product p = ci.getProduct();
                 if (p.getStock() < ci.getQuantity()) {
-                    throw new RuntimeException("Stock insuficiente para: " + p.getName());
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Stock insuficiente para: " + p.getName()
+                                    + ". Disponible: " + p.getStock()
+                                    + ", solicitado: " + ci.getQuantity() + ".");
                 }
                 p.setStock(p.getStock() - ci.getQuantity());
                 productRepository.save(p);

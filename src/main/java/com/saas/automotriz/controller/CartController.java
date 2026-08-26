@@ -10,8 +10,10 @@ import com.saas.automotriz.repository.CartRepository;
 import com.saas.automotriz.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
@@ -40,13 +42,23 @@ public class CartController {
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new RuntimeException("Producto no encontrado"));
 
-        // verificar stock
-        if (product.getStock() < request.getQuantity()) {
-            return ResponseEntity.badRequest().build();
+        if (request.getQuantity() == null || request.getQuantity() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La cantidad debe ser mayor que cero.");
+        }
+
+        int stockAvailable = product.getStock() == null ? 0 : product.getStock();
+        Optional<CartItem> existing = cartItemRepository.findByCartAndProduct(cart, product);
+        int quantityAlreadyInCart = existing.map(CartItem::getQuantity).orElse(0);
+        int requestedTotal = quantityAlreadyInCart + request.getQuantity();
+
+        // Validar el total acumulado para impedir que se agregue m??s de lo disponible.
+        if (requestedTotal > stockAvailable) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Solo hay " + stockAvailable + " unidades disponibles de " + product.getName()
+                            + ". Ya tienes " + quantityAlreadyInCart + " en tu carrito.");
         }
 
         // si ya existe el producto en el carrito, sumar cantidad
-        Optional<CartItem> existing = cartItemRepository.findByCartAndProduct(cart, product);
         if (existing.isPresent()) {
             existing.get().setQuantity(existing.get().getQuantity() + request.getQuantity());
             cartItemRepository.save(existing.get());
@@ -119,6 +131,7 @@ public class CartController {
             dto.setProductName(product.getName());
             dto.setPrice(product.getPrice());
             dto.setQuantity(item.getQuantity());
+            dto.setStock(product.getStock() == null ? 0 : product.getStock());
             dto.setSubtotal(product.getPrice() * item.getQuantity());
             dto.setDeliveryAvailable(Boolean.TRUE.equals(product.getDeliveryAvailable()));
             dto.setBusinessName(product.getBusiness() != null ? product.getBusiness().getName() : "Tienda automotriz");
