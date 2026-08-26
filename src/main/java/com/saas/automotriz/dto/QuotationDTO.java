@@ -17,5 +17,8 @@ public class QuotationDTO {
     private Double totalAmount;
     private LocalDateTime createdAt;
     private LocalDateTime approvedAt;
+    private boolean sentToClient;
+    private LocalDateTime sentAt;
+    private List<String> diagnosisPhotoUrls;
     private List<QuotationItemDTO> items;
 }

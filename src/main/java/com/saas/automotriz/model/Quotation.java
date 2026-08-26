@@ -32,6 +32,13 @@ public class Quotation {
 
     private Double totalAmount = 0.0;
     private LocalDateTime approvedAt;
+    private boolean sentToClient = false;
+    private LocalDateTime sentAt;
+
+    @ElementCollection
+    @CollectionTable(name = "quotation_diagnosis_photos", joinColumns = @JoinColumn(name = "quotation_id"))
+    @Column(name = "photo_url", columnDefinition = "TEXT")
+    private List<String> diagnosisPhotoUrls = new ArrayList<>();
 
     @OneToMany(mappedBy = "quotation", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<QuotationItem> items = new ArrayList<>();

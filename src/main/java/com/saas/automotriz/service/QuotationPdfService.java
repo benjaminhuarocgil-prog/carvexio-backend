@@ -25,7 +25,7 @@ public class QuotationPdfService {
             Document document = new Document(pdf);
 
             document.add(new Paragraph("CARVEXIO · BOLETA DE COTIZACIÓN")
-                    .setBold().setFontSize(18).setFontColor(ColorConstants.BLUE));
+                    .setBold().setFontSize(18).setFontColor(ColorConstants.BLACK));
             document.add(new Paragraph("Boleta N° " + quotation.getId())
                     .setBold().setFontSize(13));
             document.add(new Paragraph("Emitida: " + quotation.getApprovedAt().format(DATE_FORMAT)));
@@ -36,9 +36,9 @@ public class QuotationPdfService {
                 document.add(new Paragraph("Vehículo: " + quotation.getBooking().getVehicle().getVehicleType()
                         + " · Placa: " + quotation.getBooking().getVehicle().getPlate()));
             }
-            document.add(new Paragraph("\nDIAGNÓSTICO").setBold().setFontColor(ColorConstants.DARK_GRAY));
+            document.add(new Paragraph("\nDIAGNÓSTICO").setBold().setFontColor(ColorConstants.BLACK));
             document.add(new Paragraph(quotation.getDiagnosis()));
-            document.add(new Paragraph("\nDETALLE DE COTIZACIÓN").setBold().setFontColor(ColorConstants.DARK_GRAY));
+            document.add(new Paragraph("\nDETALLE DE COTIZACIÓN").setBold().setFontColor(ColorConstants.BLACK));
 
             Table table = new Table(new float[]{4, 1, 2, 2}).useAllAvailableWidth();
             String[] headers = {"Descripción", "Cant.", "P. unitario", "Subtotal"};
@@ -55,7 +55,7 @@ public class QuotationPdfService {
             document.add(new Paragraph("TOTAL APROBADO: S/ " + String.format("%.2f", quotation.getTotalAmount()))
                     .setBold().setFontSize(15).setTextAlignment(TextAlignment.RIGHT).setMarginTop(16));
             document.add(new Paragraph("Cotización aprobada por el cliente. Este documento acredita el detalle y monto acordado.")
-                    .setFontSize(9).setFontColor(ColorConstants.GRAY).setMarginTop(20));
+                    .setFontSize(9).setFontColor(ColorConstants.BLACK).setMarginTop(20));
             document.close();
             return output.toByteArray();
         } catch (Exception exception) {

@@ -5,11 +5,13 @@ import com.saas.automotriz.dto.MessageContactDTO;
 import com.saas.automotriz.model.*;
 import com.saas.automotriz.repository.*;
 import com.saas.automotriz.request.DirectMessageRequest;
+import com.saas.automotriz.service.CloudinaryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
 
@@ -22,6 +24,7 @@ public class MessageController {
     private final OrderRepository orderRepository;
     private final BookingRepository bookingRepository;
     private final DirectMessageRepository messageRepository;
+    private final CloudinaryService cloudinaryService;
 
     @GetMapping("/contacts")
     public ResponseEntity<List<MessageContactDTO>> getContacts(@AuthenticationPrincipal User user,
@@ -80,6 +83,32 @@ public class MessageController {
         message.setRead(false);
         boolean businessMode = isBusinessMode(mode);
         message.setSentByBusiness(businessMode);
+        return ResponseEntity.ok(toMessageDTO(messageRepository.save(message), businessMode));
+    }
+
+    @PostMapping(value = "/attachment", consumes = "multipart/form-data")
+    @Transactional
+    public ResponseEntity<DirectMessageDTO> sendAttachment(@AuthenticationPrincipal User user,
+                                                            @RequestParam Long businessId,
+                                                            @RequestParam(required = false) Long clientId,
+                                                            @RequestParam("file") MultipartFile file,
+                                                            @RequestParam(required = false) String content,
+                                                            @RequestParam(defaultValue = "client") String mode) {
+        if (file.isEmpty()) throw new IllegalArgumentException("Selecciona un archivo.");
+        String contentType = file.getContentType() == null ? "application/octet-stream" : file.getContentType();
+        if (!contentType.startsWith("image/") && !"application/pdf".equals(contentType)) {
+            throw new IllegalArgumentException("Solo se permiten imágenes o archivos PDF.");
+        }
+        Business business = findBusiness(businessId);
+        boolean businessMode = isBusinessMode(mode);
+        User client = resolveConversationClient(user, business, clientId, businessMode);
+        DirectMessage message = new DirectMessage();
+        message.setBusiness(business); message.setClient(client); message.setSender(user);
+        message.setContent(content == null || content.isBlank() ? "Archivo adjunto" : content.trim());
+        message.setAttachmentUrl(contentType.startsWith("image/") ? cloudinaryService.uploadImage(file) : cloudinaryService.uploadDocument(file));
+        message.setAttachmentName(file.getOriginalFilename() == null ? "archivo" : file.getOriginalFilename());
+        message.setAttachmentType(contentType);
+        message.setRead(false); message.setSentByBusiness(businessMode);
         return ResponseEntity.ok(toMessageDTO(messageRepository.save(message), businessMode));
     }
 
@@ -150,6 +179,9 @@ public class MessageController {
         dto.setContent(message.getContent());
         dto.setCreatedAt(message.getCreatedAt());
         dto.setMine(message.isSentByBusiness() == businessMode);
+        dto.setAttachmentUrl(message.getAttachmentUrl());
+        dto.setAttachmentName(message.getAttachmentName());
+        dto.setAttachmentType(message.getAttachmentType());
         return dto;
     }
 }

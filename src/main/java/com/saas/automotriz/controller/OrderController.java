@@ -162,8 +162,18 @@ public class OrderController {
     // 2. Cliente ve su historial de compras
     @GetMapping("/my")
     public ResponseEntity<List<OrderDTO>> getMyOrders(@AuthenticationPrincipal User user) {
-        return ResponseEntity.ok(orderRepository.findByClientOrderByCreatedAtDesc(user)
+        return ResponseEntity.ok(orderRepository.findByClientAndHiddenByClientFalseOrderByCreatedAtDesc(user)
                 .stream().map(this::toDTO).toList());
+    }
+
+    @DeleteMapping("/{id}/my-history")
+    public ResponseEntity<Void> hideFromClientHistory(@AuthenticationPrincipal User user, @PathVariable Long id) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido no encontrado."));
+        if (!order.getClient().getId().equals(user.getId())) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        order.setHiddenByClient(true);
+        orderRepository.save(order);
+        return ResponseEntity.noContent().build();
     }
 
     // 3. Negocio ve los pedidos que le han hecho

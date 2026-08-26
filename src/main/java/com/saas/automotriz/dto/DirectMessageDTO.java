@@ -10,4 +10,7 @@ public class DirectMessageDTO {
     private String content;
     private LocalDateTime createdAt;
     private boolean mine;
+    private String attachmentUrl;
+    private String attachmentName;
+    private String attachmentType;
 }

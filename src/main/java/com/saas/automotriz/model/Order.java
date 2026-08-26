@@ -35,6 +35,7 @@ public class Order {
     private Double discountAmount = 0.0;
     private Double paidAmount;
     private Boolean rewardPointsGranted = false;
+    private Boolean hiddenByClient = false;
     private String address;     // Dirección de envío o recojo
     private String phone;       // Teléfono de contacto para el pedido
     private String notes;       // Notas extra del cliente

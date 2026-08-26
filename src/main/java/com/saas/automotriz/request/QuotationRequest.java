@@ -7,5 +7,6 @@ import java.util.List;
 public class QuotationRequest {
     private Long bookingId;
     private String diagnosis;
+    private List<String> diagnosisPhotoUrls;
     private List<QuotationItemRequest> items;
 }

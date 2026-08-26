@@ -30,6 +30,11 @@ public class DirectMessage {
     @Column(nullable = false, length = 2000)
     private String content;
 
+    @Column(columnDefinition = "TEXT")
+    private String attachmentUrl;
+    private String attachmentName;
+    private String attachmentType;
+
     @Column(name = "is_read", nullable = false)
     private boolean read = false;
 

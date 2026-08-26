@@ -14,6 +14,7 @@ import java.util.List;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByClientOrderByCreatedAtDesc(User client);
+    List<Order> findByClientAndHiddenByClientFalseOrderByCreatedAtDesc(User client);
     List<Order> findByBusinessOrderByCreatedAtDesc(Business business);
 
     @Query("SELECT DISTINCT o FROM Order o JOIN o.items i WHERE o.business = :business AND (:branchId IS NULL OR i.product.branch.id = :branchId) ORDER BY o.createdAt DESC")

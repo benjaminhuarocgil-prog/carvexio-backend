@@ -8,4 +8,5 @@ import java.util.List;
 
 public interface QuotationRepository extends JpaRepository<Quotation, Long> {
     List<Quotation> findByBusinessOrderByCreatedAtDesc(Business business);
+    List<Quotation> findByClientAndSentToClientTrueOrderBySentAtDesc(com.saas.automotriz.model.User client);
 }

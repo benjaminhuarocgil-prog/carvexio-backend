@@ -9,6 +9,7 @@ import com.saas.automotriz.repository.QuotationRepository;
 import com.saas.automotriz.request.QuotationItemRequest;
 import com.saas.automotriz.request.QuotationRequest;
 import com.saas.automotriz.service.QuotationPdfService;
+import com.saas.automotriz.service.CloudinaryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -18,6 +19,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -31,12 +33,29 @@ public class QuotationController {
     private final BookingRepository bookingRepository;
     private final BusinessRepository businessRepository;
     private final QuotationPdfService quotationPdfService;
+    private final CloudinaryService cloudinaryService;
 
     @GetMapping
     @Transactional(readOnly = true)
     public List<QuotationDTO> list(@AuthenticationPrincipal User user) {
         Business business = businessFor(user);
         return quotationRepository.findByBusinessOrderByCreatedAtDesc(business).stream().map(this::toDTO).toList();
+    }
+
+    @GetMapping("/my")
+    @Transactional(readOnly = true)
+    public List<QuotationDTO> listForClient(@AuthenticationPrincipal User user) {
+        return quotationRepository.findByClientAndSentToClientTrueOrderBySentAtDesc(user).stream().map(this::toDTO).toList();
+    }
+
+    @PostMapping(value = "/diagnosis-photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<java.util.Map<String, String>> uploadDiagnosisPhoto(@AuthenticationPrincipal User user,
+                                                                                @RequestParam("file") MultipartFile file) {
+        businessFor(user);
+        if (file.isEmpty() || file.getContentType() == null || !file.getContentType().startsWith("image/")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Solo puedes subir imágenes del diagnóstico.");
+        }
+        return ResponseEntity.ok(java.util.Map.of("url", cloudinaryService.uploadImage(file)));
     }
 
     @PostMapping
@@ -72,6 +91,17 @@ public class QuotationController {
         return toDTO(quotation);
     }
 
+    @PostMapping("/{id}/send")
+    public QuotationDTO sendToClient(@AuthenticationPrincipal User user, @PathVariable Long id) {
+        Quotation quotation = owned(id, businessFor(user));
+        if (quotation.getStatus() != QuotationStatus.APPROVED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Primero debes aprobar la cotización.");
+        }
+        quotation.setSentToClient(true);
+        quotation.setSentAt(LocalDateTime.now());
+        return toDTO(quotationRepository.save(quotation));
+    }
+
     @GetMapping(value = "/{id}/receipt", produces = MediaType.APPLICATION_PDF_VALUE)
     @Transactional(readOnly = true)
     public ResponseEntity<byte[]> receipt(@AuthenticationPrincipal User user, @PathVariable Long id) {
@@ -86,6 +116,17 @@ public class QuotationController {
                 .body(pdf);
     }
 
+    @GetMapping(value = "/my/{id}/receipt", produces = MediaType.APPLICATION_PDF_VALUE)
+    @Transactional(readOnly = true)
+    public ResponseEntity<byte[]> receiptForClient(@AuthenticationPrincipal User user, @PathVariable Long id) {
+        Quotation quotation = quotationRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Boleta no encontrada."));
+        if (!quotation.isSentToClient() || !quotation.getClient().getId().equals(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tienes acceso a esta boleta.");
+        }
+        return pdfResponse(quotation);
+    }
+
     private void fillQuotation(Quotation quotation, Business business, QuotationRequest request) {
         if (request.getBookingId() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecciona la cita del cliente.");
         if (request.getDiagnosis() == null || request.getDiagnosis().isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ingresa el diagnóstico encontrado.");
@@ -98,6 +139,8 @@ public class QuotationController {
         quotation.setBooking(booking);
         quotation.setClient(booking.getClient());
         quotation.setDiagnosis(request.getDiagnosis().trim());
+        quotation.setDiagnosisPhotoUrls(request.getDiagnosisPhotoUrls() == null ? new ArrayList<>()
+                : request.getDiagnosisPhotoUrls().stream().filter(url -> url != null && !url.isBlank()).toList());
         quotation.getItems().clear();
         List<QuotationItem> items = new ArrayList<>();
         double total = 0.0;
@@ -147,6 +190,9 @@ public class QuotationController {
         dto.setTotalAmount(quote.getTotalAmount());
         dto.setCreatedAt(quote.getCreatedAt());
         dto.setApprovedAt(quote.getApprovedAt());
+        dto.setSentToClient(quote.isSentToClient());
+        dto.setSentAt(quote.getSentAt());
+        dto.setDiagnosisPhotoUrls(quote.getDiagnosisPhotoUrls());
         dto.setItems(quote.getItems().stream().map(item -> {
             QuotationItemDTO itemDto = new QuotationItemDTO();
             itemDto.setId(item.getId()); itemDto.setDescription(item.getDescription()); itemDto.setQuantity(item.getQuantity());
@@ -154,5 +200,13 @@ public class QuotationController {
             return itemDto;
         }).toList());
         return dto;
+    }
+
+    private ResponseEntity<byte[]> pdfResponse(Quotation quotation) {
+        byte[] pdf = quotationPdfService.generateReceipt(quotation);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=boleta-cotizacion-" + quotation.getId() + ".pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
     }
 }
