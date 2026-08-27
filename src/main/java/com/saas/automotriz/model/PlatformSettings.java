@@ -3,6 +3,7 @@ package com.saas.automotriz.model;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Column;
 import lombok.Data;
 
 @Data
@@ -15,5 +16,6 @@ public class PlatformSettings {
     private Long id;
 
     /** Percentage retained by the platform for new marketplace orders. */
+    @Column(name = "marketplace_commission_rate", nullable = false)
     private Integer marketplaceCommissionRate = 20;
 }
