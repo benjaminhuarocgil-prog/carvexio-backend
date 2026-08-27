@@ -22,6 +22,7 @@ import java.util.Comparator;
 import java.util.stream.Collectors;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import com.saas.automotriz.model.Booking;
 import com.saas.automotriz.model.BookingStatus;
 import com.saas.automotriz.model.Order;
@@ -39,6 +40,8 @@ import com.saas.automotriz.service.EmailService;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 public class AdminController {
+
+    private static final ZoneId PERU_ZONE = ZoneId.of("America/Lima");
 
     private final UserRepository userRepository;
     private final BusinessRepository businessRepository;
@@ -98,7 +101,7 @@ public class AdminController {
         dto.setPagoNegocios(businessPayout);
 
         // Rangos de Tiempo
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(PERU_ZONE);
         LocalDate sevenDaysAgo = today.minusDays(7);
         LocalDate startOfMonth = today.withDayOfMonth(1);
         LocalDate startOfYear = today.withDayOfYear(1);

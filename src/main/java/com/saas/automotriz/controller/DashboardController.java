@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -28,6 +29,8 @@ import java.util.Set;
 @RequestMapping("/api/dashboard")
 @RequiredArgsConstructor
 public class DashboardController {
+
+    private static final ZoneId PERU_ZONE = ZoneId.of("America/Lima");
 
     private final BookingRepository bookingRepository;
     private final BusinessRepository businessRepository;
@@ -44,7 +47,7 @@ public class DashboardController {
 
         // 1. Reservas de Servicios
         if (localId != null) {
-            dto.setReservasHoy(bookingRepository.countByBusinessAndBranchIdAndDate(business, localId, LocalDate.now()));
+            dto.setReservasHoy(bookingRepository.countByBusinessAndBranchIdAndDate(business, localId, LocalDate.now(PERU_ZONE)));
             dto.setReservasPendientes(bookingRepository.countByBusinessAndBranchIdAndStatus(business, localId, BookingStatus.PENDING));
             dto.setReservasCompletadas(bookingRepository.countByBusinessAndBranchIdAndStatus(business, localId, BookingStatus.COMPLETED));
             dto.setIngresosServicios(bookingRepository.sumIngresosByBusinessAndBranchId(business, localId));
@@ -56,7 +59,7 @@ public class DashboardController {
                 dto.setServicioMasSolicitado("Sin datos aún");
             }
         } else {
-            dto.setReservasHoy(bookingRepository.countByBusinessAndDate(business, LocalDate.now()));
+            dto.setReservasHoy(bookingRepository.countByBusinessAndDate(business, LocalDate.now(PERU_ZONE)));
             dto.setReservasPendientes(bookingRepository.countByBusinessAndStatus(business, BookingStatus.PENDING));
             dto.setReservasCompletadas(bookingRepository.countByBusinessAndStatus(business, BookingStatus.COMPLETED));
             dto.setIngresosServicios(bookingRepository.sumIngresosByBusiness(business));
