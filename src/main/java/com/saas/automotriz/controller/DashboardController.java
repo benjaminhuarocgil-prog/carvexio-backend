@@ -4,10 +4,13 @@ import com.saas.automotriz.dto.DashboardDTO;
 import com.saas.automotriz.model.BookingStatus;
 import com.saas.automotriz.model.Business;
 import com.saas.automotriz.model.OrderStatus;
+import com.saas.automotriz.model.Order;
+import com.saas.automotriz.model.PlatformSettings;
 import com.saas.automotriz.model.User;
 import com.saas.automotriz.repository.BookingRepository;
 import com.saas.automotriz.repository.BusinessRepository;
 import com.saas.automotriz.repository.OrderRepository;
+import com.saas.automotriz.repository.PlatformSettingsRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -29,6 +32,7 @@ public class DashboardController {
     private final BookingRepository bookingRepository;
     private final BusinessRepository businessRepository;
     private final OrderRepository orderRepository;
+    private final PlatformSettingsRepository platformSettingsRepository;
 
     @GetMapping
     public ResponseEntity<DashboardDTO> getDashboard(@AuthenticationPrincipal User user,
@@ -72,26 +76,39 @@ public class DashboardController {
         // 2. Pedidos de Productos
         Long totalPedidos;
         Long pedidosPendientes;
-        Double ingresosProductos;
+        List<Order> businessOrders;
 
         if (localId != null) {
             totalPedidos = orderRepository.countByBusinessAndBranchId(business, localId);
             pedidosPendientes = orderRepository.countByBusinessAndStatusAndBranchId(business, OrderStatus.PENDING, localId);
-            ingresosProductos = orderRepository.sumIngresosByBusinessAndBranchId(business, localId);
+            businessOrders = orderRepository.findByBusinessAndBranchIdOrderByCreatedAtDesc(business, localId);
         } else {
             totalPedidos = orderRepository.countByBusiness(business);
             pedidosPendientes = orderRepository.countByBusinessAndStatus(business, OrderStatus.PENDING);
-            ingresosProductos = orderRepository.sumIngresosByBusiness(business);
+            businessOrders = orderRepository.findByBusinessOrderByCreatedAtDesc(business);
         }
 
         if (totalPedidos == null) totalPedidos = 0L;
         if (pedidosPendientes == null) pedidosPendientes = 0L;
-        if (ingresosProductos == null) ingresosProductos = 0.0;
+        int currentCommissionRate = getMarketplaceCommissionRate();
+        List<Order> settledOrders = businessOrders.stream()
+                .filter(this::isSettledOrder)
+                .toList();
+        double ventasProductosBrutas = settledOrders.stream()
+                .mapToDouble(order -> safeAmount(order.getPaidAmount() == null ? order.getTotalAmount() : order.getPaidAmount()))
+                .sum();
+        double ingresosProductosNetos = settledOrders.stream()
+                .mapToDouble(order -> businessPayout(order, currentCommissionRate))
+                .sum();
+        double comisionMarketplace = roundMoney(ventasProductosBrutas - ingresosProductosNetos);
 
         dto.setPedidosTotales(totalPedidos);
         dto.setPedidosPendientes(pedidosPendientes);
         dto.setPedidosCompletados(Math.max(0L, totalPedidos - pedidosPendientes));
-        dto.setIngresosProductos(ingresosProductos);
+        dto.setVentasProductosBrutas(ventasProductosBrutas);
+        dto.setComisionMarketplace(comisionMarketplace);
+        dto.setIngresosProductos(ingresosProductosNetos);
+        dto.setCommissionRate(currentCommissionRate);
 
         // 3. Ingreso total combinado (Servicios + Productos)
         dto.setIngresosTotal(dto.getIngresosServicios() + dto.getIngresosProductos());
@@ -135,5 +152,33 @@ public class DashboardController {
         dto.setClientesTotal((long) uniqueClientIds.size());
 
         return ResponseEntity.ok(dto);
+    }
+
+    private boolean isSettledOrder(Order order) {
+        return order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.CANCELLED;
+    }
+
+    private double businessPayout(Order order, int currentCommissionRate) {
+        if (order.getBusinessPayoutAmount() != null) {
+            return order.getBusinessPayoutAmount();
+        }
+        double paidAmount = safeAmount(order.getPaidAmount() == null ? order.getTotalAmount() : order.getPaidAmount());
+        // Pedidos anteriores al reparto no tienen snapshot: se muestran con la tarifa vigente.
+        return roundMoney(paidAmount * (100 - currentCommissionRate) / 100.0);
+    }
+
+    private int getMarketplaceCommissionRate() {
+        return platformSettingsRepository.findById(1L)
+                .map(PlatformSettings::getMarketplaceCommissionRate)
+                .filter(rate -> rate >= 20 && rate <= 40)
+                .orElse(20);
+    }
+
+    private double safeAmount(Double amount) {
+        return amount == null ? 0.0 : amount;
+    }
+
+    private double roundMoney(double amount) {
+        return Math.round(amount * 100.0) / 100.0;
     }
 }

@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.stream.Collectors;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import com.saas.automotriz.model.Booking;
 import com.saas.automotriz.model.BookingStatus;
 import com.saas.automotriz.model.Order;
@@ -59,30 +60,32 @@ public class AdminController {
         List<Booking> completedBookings = bookingRepository.findByStatus(BookingStatus.COMPLETED);
 
         // Suma total histórica (monto acumulado)
-        double totalRevenue = completedBookings.stream()
+        double bookingRevenue = completedBookings.stream()
                 .mapToDouble(b -> b.getService() != null && b.getService().getPrice() != null ? b.getService().getPrice() : 0.0)
                 .sum();
-        dto.setIngresosTotales(totalRevenue);
 
         // Las comisiones del marketplace se calculan usando el snapshot guardado en cada pedido pagado.
         // Así una tarifa nueva no altera lo que ya corresponde pagar a cada taller.
         List<Order> paidOrders = orderRepository.findByStatusIn(List.of(
                 OrderStatus.PAID, OrderStatus.PREPARING, OrderStatus.READY_FOR_PICKUP,
                 OrderStatus.SHIPPED, OrderStatus.DELIVERED));
+        int currentCommissionRate = getMarketplaceCommissionRate();
         double marketplaceSales = paidOrders.stream()
                 .mapToDouble(order -> order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount())
                 .sum();
         double adminRevenue = paidOrders.stream()
                 .mapToDouble(order -> order.getPlatformCommissionAmount() == null
-                        ? roundMoney((order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount()) * 0.10)
+                        ? roundMoney((order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount()) * currentCommissionRate / 100.0)
                         : order.getPlatformCommissionAmount())
                 .sum();
         double businessPayout = paidOrders.stream()
                 .mapToDouble(order -> order.getBusinessPayoutAmount() == null
-                        ? roundMoney((order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount()) * 0.90)
+                        ? roundMoney((order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount()) * (100 - currentCommissionRate) / 100.0)
                         : order.getBusinessPayoutAmount())
                 .sum();
-        dto.setCommissionRate(getMarketplaceCommissionRate());
+        double totalRevenue = bookingRevenue + marketplaceSales;
+        dto.setIngresosTotales(totalRevenue);
+        dto.setCommissionRate(currentCommissionRate);
         dto.setVentasMarketplace(marketplaceSales);
         dto.setGananciaAdmin(adminRevenue);
         dto.setPagoNegocios(businessPayout);
@@ -117,6 +120,17 @@ public class AdminController {
                 revYear += price;
             }
         }
+        for (Order order : paidOrders) {
+            LocalDateTime createdAt = order.getCreatedAt();
+            if (createdAt == null) continue;
+            LocalDate orderDate = createdAt.toLocalDate();
+            double amount = order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount();
+
+            if (orderDate.equals(today)) revToday += amount;
+            if (!orderDate.isBefore(sevenDaysAgo) && !orderDate.isAfter(today)) revSevenDays += amount;
+            if (!orderDate.isBefore(startOfMonth) && !orderDate.isAfter(today)) revMonth += amount;
+            if (!orderDate.isBefore(startOfYear) && !orderDate.isAfter(today)) revYear += amount;
+        }
 
         dto.setIngresosHoy(revToday);
         dto.setIngresosSieteDias(revSevenDays);
@@ -130,6 +144,13 @@ public class AdminController {
                 String bizName = b.getBusiness().getName();
                 double price = b.getService() != null && b.getService().getPrice() != null ? b.getService().getPrice() : 0.0;
                 businessRevenueMap.put(bizName, businessRevenueMap.getOrDefault(bizName, 0.0) + price);
+            }
+        }
+        for (Order order : paidOrders) {
+            if (order.getBusiness() != null && order.getBusiness().getName() != null) {
+                String businessName = order.getBusiness().getName();
+                double amount = order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount();
+                businessRevenueMap.put(businessName, businessRevenueMap.getOrDefault(businessName, 0.0) + amount);
             }
         }
         List<AdminDashboardDTO.BusinessRevenueDTO> topNegocios = businessRevenueMap.entrySet().stream()
@@ -163,6 +184,14 @@ public class AdminController {
                 int monthIdx = bDate.getMonthValue() - 1;
                 double price = b.getService() != null && b.getService().getPrice() != null ? b.getService().getPrice() : 0.0;
                 monthlySums[monthIdx] += price;
+            }
+        }
+        for (Order order : paidOrders) {
+            LocalDateTime createdAt = order.getCreatedAt();
+            if (createdAt != null && createdAt.getYear() == today.getYear()) {
+                int monthIdx = createdAt.getMonthValue() - 1;
+                double amount = order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount();
+                monthlySums[monthIdx] += amount;
             }
         }
         List<AdminDashboardDTO.MonthlyRevenueDTO> tendenciaMensual = new ArrayList<>();
