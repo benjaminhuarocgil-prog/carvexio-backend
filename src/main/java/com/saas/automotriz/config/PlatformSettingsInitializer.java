@@ -19,13 +19,28 @@ public class PlatformSettingsInitializer {
 
     @Bean
     ApplicationRunner createPlatformSettingsTable(TransactionTemplate transactionTemplate) {
-        return args -> transactionTemplate.executeWithoutResult(status ->
-                entityManager.createNativeQuery("""
-                        CREATE TABLE IF NOT EXISTS platform_settings (
-                            id BIGINT PRIMARY KEY,
-                            marketplace_commission_rate INTEGER NOT NULL DEFAULT 20
-                        )
-                        """).executeUpdate()
-        );
+        return args -> transactionTemplate.executeWithoutResult(status -> {
+            entityManager.createNativeQuery("""
+                    CREATE TABLE IF NOT EXISTS platform_settings (
+                        id BIGINT PRIMARY KEY,
+                        marketplace_commission_rate INTEGER NOT NULL DEFAULT 20
+                    )
+                    """).executeUpdate();
+
+            // Render no aplica cambios de entidades a PostgreSQL automáticamente.
+            // Estas columnas son necesarias antes de que Hibernate pueda leer cualquier pedido.
+            entityManager.createNativeQuery("""
+                    ALTER TABLE orders
+                    ADD COLUMN IF NOT EXISTS platform_commission_rate INTEGER
+                    """).executeUpdate();
+            entityManager.createNativeQuery("""
+                    ALTER TABLE orders
+                    ADD COLUMN IF NOT EXISTS platform_commission_amount DOUBLE PRECISION
+                    """).executeUpdate();
+            entityManager.createNativeQuery("""
+                    ALTER TABLE orders
+                    ADD COLUMN IF NOT EXISTS business_payout_amount DOUBLE PRECISION
+                    """).executeUpdate();
+        });
     }
 }
