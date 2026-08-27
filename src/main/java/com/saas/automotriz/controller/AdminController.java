@@ -27,6 +27,7 @@ import com.saas.automotriz.model.BookingStatus;
 import com.saas.automotriz.model.Order;
 import com.saas.automotriz.model.OrderStatus;
 import com.saas.automotriz.model.PlatformSettings;
+import com.saas.automotriz.model.PlatformNotification;
 import com.saas.automotriz.request.UpdatePlatformCommissionRequest;
 import com.saas.automotriz.request.PlatformNotificationRequest;
 import jakarta.validation.Valid;
