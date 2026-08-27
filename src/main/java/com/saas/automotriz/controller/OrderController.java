@@ -5,6 +5,7 @@ import com.saas.automotriz.dto.OrderItemDTO;
 import com.saas.automotriz.model.*;
 import com.saas.automotriz.repository.*;
 import com.saas.automotriz.request.CheckoutRequest;
+import com.saas.automotriz.service.MarketplaceCommissionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -27,7 +28,7 @@ public class OrderController {
     private final BusinessRepository businessRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
-    private final PlatformSettingsRepository platformSettingsRepository;
+    private final MarketplaceCommissionService marketplaceCommissionService;
 
     // 1. Checkout: Convertir el carrito actual en uno o varios pedidos (agrupados por negocio)
     @PostMapping("/checkout")
@@ -135,11 +136,6 @@ public class OrderController {
             order.setDiscountAmount(discountAmount);
             double paidAmount = total - discountAmount;
             order.setPaidAmount(paidAmount);
-            int commissionRate = getMarketplaceCommissionRate();
-            double commissionAmount = roundMoney(paidAmount * commissionRate / 100.0);
-            order.setPlatformCommissionRate(commissionRate);
-            order.setPlatformCommissionAmount(commissionAmount);
-            order.setBusinessPayoutAmount(roundMoney(paidAmount - commissionAmount));
             order.setItems(orderItems);
             savedOrders.add(orderRepository.save(order));
         }
@@ -233,6 +229,7 @@ public class OrderController {
         if (!order.getClient().getId().equals(user.getId())) {
             return ResponseEntity.status(403).build();
         }
+        marketplaceCommissionService.applyTo(order);
         order.setStatus(OrderStatus.PAID);
         grantRewardPoints(order);
         return ResponseEntity.ok(toDTO(orderRepository.save(order)));
@@ -290,17 +287,6 @@ public class OrderController {
         if (price < 500) return 25;
         if (price < 1000) return 60;
         return 120;
-    }
-
-    private int getMarketplaceCommissionRate() {
-        return platformSettingsRepository.findById(1L)
-                .map(PlatformSettings::getMarketplaceCommissionRate)
-                .filter(rate -> rate >= 20 && rate <= 40)
-                .orElse(20);
-    }
-
-    private double roundMoney(double amount) {
-        return Math.round(amount * 100.0) / 100.0;
     }
 
     private void validateCheckoutItem(CartItem cartItem) {

@@ -20,6 +20,7 @@ import com.saas.automotriz.repository.PlanRepository;
 import com.saas.automotriz.repository.UserRepository;
 import com.saas.automotriz.request.OrderRequest;
 import com.saas.automotriz.request.PlanPaymentRequest;
+import com.saas.automotriz.service.MarketplaceCommissionService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -41,13 +42,16 @@ public class MercadoPagoController {
     private final PlanRepository planRepository;
     private final BusinessRepository businessRepository;
     private final UserRepository userRepository;
+    private final MarketplaceCommissionService marketplaceCommissionService;
 
     public MercadoPagoController(OrderRepository orderRepository, PlanRepository planRepository,
-                                  BusinessRepository businessRepository, UserRepository userRepository) {
+                                  BusinessRepository businessRepository, UserRepository userRepository,
+                                  MarketplaceCommissionService marketplaceCommissionService) {
         this.orderRepository = orderRepository;
         this.planRepository = planRepository;
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
+        this.marketplaceCommissionService = marketplaceCommissionService;
     }
 
     @Value("${mercadopago.access.token}")
@@ -228,6 +232,7 @@ public class MercadoPagoController {
                     Long orderId = Long.parseLong(externalReference);
                     orderRepository.findById(orderId).ifPresent(o -> {
                         if (o.getStatus() == OrderStatus.PENDING) {
+                            marketplaceCommissionService.applyTo(o);
                             o.setStatus(OrderStatus.PAID);
                             grantRewardPoints(o);
                             orderRepository.save(o);
