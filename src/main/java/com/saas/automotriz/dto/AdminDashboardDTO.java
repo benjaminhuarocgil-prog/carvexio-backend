@@ -24,6 +24,8 @@ public class AdminDashboardDTO {
     // Distribución del modelo de comisión
     private Double gananciaAdmin;
     private Double pagoNegocios;
+    private Integer commissionRate;
+    private Double ventasMarketplace;
 
     // Desgloses
     private List<BusinessRevenueDTO> topNegocios;

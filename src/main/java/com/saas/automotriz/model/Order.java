@@ -34,6 +34,10 @@ public class Order {
     private Double totalAmount;
     private Double discountAmount = 0.0;
     private Double paidAmount;
+    // Snapshot de la distribución vigente al crear el pedido. No cambia si el admin modifica la tarifa después.
+    private Integer platformCommissionRate;
+    private Double platformCommissionAmount;
+    private Double businessPayoutAmount;
     private Boolean rewardPointsGranted = false;
     private Boolean hiddenByClient = false;
     private String address;     // Dirección de envío o recojo

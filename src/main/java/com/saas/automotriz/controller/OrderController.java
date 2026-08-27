@@ -27,6 +27,7 @@ public class OrderController {
     private final BusinessRepository businessRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
+    private final PlatformSettingsRepository platformSettingsRepository;
 
     // 1. Checkout: Convertir el carrito actual en uno o varios pedidos (agrupados por negocio)
     @PostMapping("/checkout")
@@ -132,7 +133,13 @@ public class OrderController {
                     : 0.0;
             double discountAmount = cartDiscountAmount + rewardDiscountAmount;
             order.setDiscountAmount(discountAmount);
-            order.setPaidAmount(total - discountAmount);
+            double paidAmount = total - discountAmount;
+            order.setPaidAmount(paidAmount);
+            int commissionRate = getMarketplaceCommissionRate();
+            double commissionAmount = roundMoney(paidAmount * commissionRate / 100.0);
+            order.setPlatformCommissionRate(commissionRate);
+            order.setPlatformCommissionAmount(commissionAmount);
+            order.setBusinessPayoutAmount(roundMoney(paidAmount - commissionAmount));
             order.setItems(orderItems);
             savedOrders.add(orderRepository.save(order));
         }
@@ -241,6 +248,9 @@ public class OrderController {
         dto.setTotalAmount(order.getTotalAmount());
         dto.setDiscountAmount(order.getDiscountAmount() == null ? 0.0 : order.getDiscountAmount());
         dto.setPaidAmount(order.getPaidAmount() == null ? order.getTotalAmount() : order.getPaidAmount());
+        dto.setPlatformCommissionRate(order.getPlatformCommissionRate());
+        dto.setPlatformCommissionAmount(order.getPlatformCommissionAmount());
+        dto.setBusinessPayoutAmount(order.getBusinessPayoutAmount());
         dto.setStatus(order.getStatus().name());
         dto.setDeliveryMethod(order.getDeliveryMethod() == null
                 ? DeliveryMethod.PICKUP.name()
@@ -280,6 +290,17 @@ public class OrderController {
         if (price < 500) return 25;
         if (price < 1000) return 60;
         return 120;
+    }
+
+    private int getMarketplaceCommissionRate() {
+        return platformSettingsRepository.findById(1L)
+                .map(PlatformSettings::getMarketplaceCommissionRate)
+                .filter(rate -> rate >= 20 && rate <= 40)
+                .orElse(20);
+    }
+
+    private double roundMoney(double amount) {
+        return Math.round(amount * 100.0) / 100.0;
     }
 
     private void validateCheckoutItem(CartItem cartItem) {

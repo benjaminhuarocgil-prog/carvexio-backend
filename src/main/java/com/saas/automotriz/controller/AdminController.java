@@ -21,6 +21,11 @@ import java.util.stream.Collectors;
 import java.time.LocalDate;
 import com.saas.automotriz.model.Booking;
 import com.saas.automotriz.model.BookingStatus;
+import com.saas.automotriz.model.Order;
+import com.saas.automotriz.model.OrderStatus;
+import com.saas.automotriz.model.PlatformSettings;
+import com.saas.automotriz.request.UpdatePlatformCommissionRequest;
+import jakarta.validation.Valid;
 
 import com.saas.automotriz.service.EmailService;
 
@@ -34,6 +39,8 @@ public class AdminController {
     private final BookingRepository bookingRepository;
     private final ProductRepository productRepository;
     private final ReviewRepository reviewRepository;
+    private final OrderRepository orderRepository;
+    private final PlatformSettingsRepository platformSettingsRepository;
     private final com.saas.automotriz.service.Auth0ManagementService auth0ManagementService;
     private final EmailService emailService;
 
@@ -57,9 +64,28 @@ public class AdminController {
                 .sum();
         dto.setIngresosTotales(totalRevenue);
 
-        // Modelo de Comisión (10% admin, 90% negocios)
-        dto.setGananciaAdmin(totalRevenue * 0.10);
-        dto.setPagoNegocios(totalRevenue * 0.90);
+        // Las comisiones del marketplace se calculan usando el snapshot guardado en cada pedido pagado.
+        // Así una tarifa nueva no altera lo que ya corresponde pagar a cada taller.
+        List<Order> paidOrders = orderRepository.findByStatusIn(List.of(
+                OrderStatus.PAID, OrderStatus.PREPARING, OrderStatus.READY_FOR_PICKUP,
+                OrderStatus.SHIPPED, OrderStatus.DELIVERED));
+        double marketplaceSales = paidOrders.stream()
+                .mapToDouble(order -> order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount())
+                .sum();
+        double adminRevenue = paidOrders.stream()
+                .mapToDouble(order -> order.getPlatformCommissionAmount() == null
+                        ? roundMoney((order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount()) * 0.10)
+                        : order.getPlatformCommissionAmount())
+                .sum();
+        double businessPayout = paidOrders.stream()
+                .mapToDouble(order -> order.getBusinessPayoutAmount() == null
+                        ? roundMoney((order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount()) * 0.90)
+                        : order.getBusinessPayoutAmount())
+                .sum();
+        dto.setCommissionRate(getMarketplaceCommissionRate());
+        dto.setVentasMarketplace(marketplaceSales);
+        dto.setGananciaAdmin(adminRevenue);
+        dto.setPagoNegocios(businessPayout);
 
         // Rangos de Tiempo
         LocalDate today = LocalDate.now();
@@ -146,6 +172,39 @@ public class AdminController {
         dto.setTendenciaMensual(tendenciaMensual);
 
         return ResponseEntity.ok(dto);
+    }
+
+    @GetMapping("/commission")
+    public ResponseEntity<Map<String, Integer>> getMarketplaceCommission() {
+        return ResponseEntity.ok(Map.of("commissionRate", getMarketplaceCommissionRate()));
+    }
+
+    @PutMapping("/commission")
+    public ResponseEntity<Map<String, Integer>> updateMarketplaceCommission(
+            @Valid @RequestBody UpdatePlatformCommissionRequest request) {
+        PlatformSettings settings = platformSettingsRepository.findById(1L).orElseGet(() -> {
+            PlatformSettings newSettings = new PlatformSettings();
+            newSettings.setId(1L);
+            return newSettings;
+        });
+        settings.setMarketplaceCommissionRate(request.getCommissionRate());
+        platformSettingsRepository.save(settings);
+        return ResponseEntity.ok(Map.of("commissionRate", settings.getMarketplaceCommissionRate()));
+    }
+
+    private int getMarketplaceCommissionRate() {
+        return platformSettingsRepository.findById(1L)
+                .map(PlatformSettings::getMarketplaceCommissionRate)
+                .filter(rate -> rate >= 20 && rate <= 40)
+                .orElse(20);
+    }
+
+    private double safeAmount(Double amount) {
+        return amount == null ? 0.0 : amount;
+    }
+
+    private double roundMoney(double amount) {
+        return Math.round(amount * 100.0) / 100.0;
     }
 
     // listar todos los usuarios
