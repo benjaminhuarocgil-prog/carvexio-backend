@@ -1,6 +1,7 @@
 package com.saas.automotriz.controller;
 
 import com.saas.automotriz.dto.AdminDashboardDTO;
+import com.saas.automotriz.dto.AdminBusinessPurchaseDTO;
 import com.saas.automotriz.dto.BusinessDTO;
 import com.saas.automotriz.dto.UserDTO;
 import com.saas.automotriz.model.Business;
@@ -306,6 +307,45 @@ public class AdminController {
             return dto;
         }).toList();
         return ResponseEntity.ok(businesses);
+    }
+
+    /** Purchase history is intentionally available only for businesses approved by the admin. */
+    @GetMapping("/businesses/{id}/purchases")
+    public ResponseEntity<List<AdminBusinessPurchaseDTO>> getApprovedBusinessPurchases(@PathVariable Long id) {
+        Business business = businessRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Negocio no encontrado"));
+        if (business.getStatus() != BusinessStatus.APPROVED) {
+            return ResponseEntity.status(403).build();
+        }
+
+        int currentCommissionRate = getMarketplaceCommissionRate();
+        List<AdminBusinessPurchaseDTO> purchases = orderRepository.findByBusinessOrderByCreatedAtDesc(business).stream()
+                .filter(order -> order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.CANCELLED)
+                .map(order -> toAdminBusinessPurchaseDTO(order, currentCommissionRate))
+                .toList();
+        return ResponseEntity.ok(purchases);
+    }
+
+    private AdminBusinessPurchaseDTO toAdminBusinessPurchaseDTO(Order order, int currentCommissionRate) {
+        double paidAmount = order.getPaidAmount() == null ? safeAmount(order.getTotalAmount()) : order.getPaidAmount();
+        double adminAmount = order.getPlatformCommissionAmount() == null
+                ? roundMoney(paidAmount * currentCommissionRate / 100.0)
+                : order.getPlatformCommissionAmount();
+        double businessAmount = order.getBusinessPayoutAmount() == null
+                ? roundMoney(paidAmount - adminAmount)
+                : order.getBusinessPayoutAmount();
+
+        AdminBusinessPurchaseDTO dto = new AdminBusinessPurchaseDTO();
+        dto.setOrderId(order.getId());
+        dto.setPaidAmount(paidAmount);
+        dto.setCommissionRate(order.getPlatformCommissionRate() == null
+                ? currentCommissionRate
+                : order.getPlatformCommissionRate());
+        dto.setAdminAmount(adminAmount);
+        dto.setBusinessAmount(businessAmount);
+        dto.setStatus(order.getStatus().name());
+        dto.setCreatedAt(order.getCreatedAt());
+        return dto;
     }
 
     // eliminar negocio
