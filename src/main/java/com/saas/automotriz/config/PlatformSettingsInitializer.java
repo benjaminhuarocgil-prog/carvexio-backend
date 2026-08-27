@@ -41,6 +41,23 @@ public class PlatformSettingsInitializer {
                     ALTER TABLE orders
                     ADD COLUMN IF NOT EXISTS business_payout_amount DOUBLE PRECISION
                     """).executeUpdate();
+            entityManager.createNativeQuery("""
+                    CREATE TABLE IF NOT EXISTS platform_notifications (
+                        id BIGSERIAL PRIMARY KEY,
+                        message VARCHAR(2000) NOT NULL,
+                        commission_rate INTEGER,
+                        created_at TIMESTAMP
+                    )
+                    """).executeUpdate();
+            entityManager.createNativeQuery("""
+                    CREATE TABLE IF NOT EXISTS business_notification_recipients (
+                        id BIGSERIAL PRIMARY KEY,
+                        notification_id BIGINT NOT NULL REFERENCES platform_notifications(id),
+                        business_id BIGINT NOT NULL REFERENCES businesses(id),
+                        dismissed BOOLEAN NOT NULL DEFAULT FALSE,
+                        UNIQUE (notification_id, business_id)
+                    )
+                    """).executeUpdate();
         });
     }
 }

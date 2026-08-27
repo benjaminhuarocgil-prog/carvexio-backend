@@ -2,6 +2,7 @@ package com.saas.automotriz.controller;
 
 import com.saas.automotriz.dto.AdminDashboardDTO;
 import com.saas.automotriz.dto.AdminBusinessPurchaseDTO;
+import com.saas.automotriz.dto.PlatformNotificationDTO;
 import com.saas.automotriz.dto.BusinessDTO;
 import com.saas.automotriz.dto.UserDTO;
 import com.saas.automotriz.model.Business;
@@ -27,6 +28,7 @@ import com.saas.automotriz.model.Order;
 import com.saas.automotriz.model.OrderStatus;
 import com.saas.automotriz.model.PlatformSettings;
 import com.saas.automotriz.request.UpdatePlatformCommissionRequest;
+import com.saas.automotriz.request.PlatformNotificationRequest;
 import jakarta.validation.Valid;
 
 import com.saas.automotriz.service.EmailService;
@@ -43,6 +45,8 @@ public class AdminController {
     private final ReviewRepository reviewRepository;
     private final OrderRepository orderRepository;
     private final PlatformSettingsRepository platformSettingsRepository;
+    private final PlatformNotificationRepository platformNotificationRepository;
+    private final BusinessNotificationRecipientRepository businessNotificationRecipientRepository;
     private final com.saas.automotriz.service.Auth0ManagementService auth0ManagementService;
     private final EmailService emailService;
 
@@ -235,6 +239,40 @@ public class AdminController {
 
     private double roundMoney(double amount) {
         return Math.round(amount * 100.0) / 100.0;
+    }
+
+    @GetMapping("/business-notifications")
+    public ResponseEntity<List<PlatformNotificationDTO>> getBusinessNotifications() {
+        return ResponseEntity.ok(platformNotificationRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(this::toPlatformNotificationDTO)
+                .toList());
+    }
+
+    @PostMapping("/business-notifications")
+    public ResponseEntity<PlatformNotificationDTO> sendBusinessNotification(
+            @Valid @RequestBody PlatformNotificationRequest request) {
+        PlatformNotification notification = new PlatformNotification();
+        notification.setMessage(request.getMessage().trim());
+        notification.setCommissionRate(getMarketplaceCommissionRate());
+        notification = platformNotificationRepository.save(notification);
+
+        for (Business business : businessRepository.findByStatus(BusinessStatus.APPROVED)) {
+            BusinessNotificationRecipient recipient = new BusinessNotificationRecipient();
+            recipient.setNotification(notification);
+            recipient.setBusiness(business);
+            recipient.setDismissed(false);
+            businessNotificationRecipientRepository.save(recipient);
+        }
+        return ResponseEntity.ok(toPlatformNotificationDTO(notification));
+    }
+
+    private PlatformNotificationDTO toPlatformNotificationDTO(PlatformNotification notification) {
+        PlatformNotificationDTO dto = new PlatformNotificationDTO();
+        dto.setId(notification.getId());
+        dto.setMessage(notification.getMessage());
+        dto.setCommissionRate(notification.getCommissionRate());
+        dto.setCreatedAt(notification.getCreatedAt());
+        return dto;
     }
 
     // listar todos los usuarios
