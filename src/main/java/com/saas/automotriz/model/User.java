@@ -25,6 +25,8 @@ public class User implements UserDetails {
     private String phone;
     private Integer rewardPoints = 0;
     private Integer activeRewardDiscount = 0;
+    @Column(name = "referral_code", unique = true)
+    private String referralCode;
 
     @Enumerated(EnumType.STRING)
     private Role role;

@@ -58,6 +58,16 @@ public class PlatformSettingsInitializer {
                         UNIQUE (notification_id, business_id)
                     )
                     """).executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(32)").executeUpdate();
+            entityManager.createNativeQuery("CREATE UNIQUE INDEX IF NOT EXISTS users_referral_code_unique ON users(referral_code) WHERE referral_code IS NOT NULL").executeUpdate();
+            entityManager.createNativeQuery("""
+                    CREATE TABLE IF NOT EXISTS referrals (
+                        id BIGSERIAL PRIMARY KEY,
+                        referrer_id BIGINT NOT NULL REFERENCES users(id),
+                        referred_id BIGINT NOT NULL UNIQUE REFERENCES users(id),
+                        created_at TIMESTAMP
+                    )
+                    """).executeUpdate();
         });
     }
 }
